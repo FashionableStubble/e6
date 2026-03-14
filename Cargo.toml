@@ -2,6 +2,13 @@
 name = "e6"
 version = "0.1.0"
 edition = "2024"
+authors = ["Thoth (@thothington) (FashionableStubble)"]
+description = "A batteries-included e621 API interface"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/FashionableStubble/e6"
+readme = "README.md"
+keywords = ["e621", "furry"]
+categories = ["api-bindings"]
 
 [dependencies]
 anyhow = "1.0.99"
