@@ -1,22 +1,7 @@
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        // let result = add(2, 2);
-        // assert_eq!(result, 4);
-    }
-}
-
-use futures::{io, StreamExt};
 use reqwest::header::{AUTHORIZATION, USER_AGENT};
-use tokio::{fs::File, io::{ AsyncBufReadExt, AsyncWriteExt }};
-use indicatif::{ MultiProgress, ProgressBar, ProgressStyle };
+// use indicatif::{ MultiProgress, ProgressBar, ProgressStyle };
 use base64::{engine, prelude::*};
 use serde::{Serialize, Deserialize};
-use serde_json;
-use md5;
 
 #[derive(Debug, serde::Deserialize, Default, Clone)]
 pub enum Rating {
@@ -126,36 +111,36 @@ pub struct Flags {
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct Alternative {
-    pub fps: f32,
-    pub codec: String,
-    pub size: u64,
+    pub fps: Option<f32>,
+    pub codec: Option<String>,
+    pub size: Option<u64>,
     pub width: u16,
     pub height: u16,
-    pub url: String
+    pub url: Option<String>
 }
 
 // adding them as I run into them
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct Variants {
-    pub mp4: Alternative,
+    pub mp4: Option<Alternative>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct Alternatives {
     pub has: bool,
-    pub original: Alternative,
-    pub variants: Variants,
-    pub samples: Samples
+    pub original: Option<Alternative>,
+    pub variants: Option<Variants>,
+    pub samples: Option<Samples>
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct SampleEntry {
     pub has: bool,
-    pub width: u16,
-    pub height: u16,
-    pub url: String,
-    pub alt: String,
-    pub alternatives: Alternatives
+    pub width: Option<u16>,
+    pub height: Option<u16>,
+    pub url: Option<String>,
+    pub alt: Option<String>,
+    pub alternatives: Option<Alternatives>
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
@@ -176,20 +161,20 @@ pub struct Post {
     pub created_at: String,
     pub comment_count: u32,
     pub uploader_id: u32,
-    pub updated_at: String,
+    pub updated_at: Option<String>,
     pub fav_count: u32,
-    pub sources: Vec<String>,
+    pub sources: Option<Vec<String>>,
     pub score: Score,
     pub preview: PreviewEntry,
-    pub locked_tags: Vec<String>,
+    pub locked_tags: Option<Vec<String>>,
     pub change_seq: u64,
     pub flags: Flags,
-    pub approver_id: u32,
+    pub approver_id: Option<u32>,
     pub uploader_name: String,
     pub is_favorited: bool,
     pub has_notes: bool,
     pub duration: Option<f32>,
-    pub sample: Alternative
+    pub sample: Option<Alternative>
 }
 
 #[derive(Debug, Deserialize, Default)]
