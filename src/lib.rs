@@ -1,4 +1,6 @@
-use reqwest::header::{AUTHORIZATION, USER_AGENT};
+use std::sync::Arc;
+
+use reqwest::{Method, Response, header::{AUTHORIZATION, USER_AGENT}};
 // use indicatif::{ MultiProgress, ProgressBar, ProgressStyle };
 use base64::{engine, prelude::*};
 use serde::{Serialize, Deserialize};
@@ -150,7 +152,7 @@ pub struct Samples {
 }
 
 #[derive(Debug, serde::Deserialize, Default, Clone)]
-pub struct Post {
+pub struct PostData {
     pub file: FileEntry,
     pub tags: Tags,
     pub id: u64,
@@ -177,94 +179,48 @@ pub struct Post {
     pub sample: Option<Alternative>
 }
 
+#[derive(Clone, Default)]
+pub struct Post {
+    pub data: PostData,
+    ctx: E6
+}
+
+impl Post {
+    pub async fn favorite(&self) -> Response {
+        self.ctx.inner.send_request(Method::POST, &format!("/favorites.json?post_id={}", self.data.id)).await
+    }
+
+    pub async fn unfavorite(&self) -> Response {
+        self.ctx.inner.send_request(Method::DELETE, &format!("/favorites/{}.json", self.data.id)).await
+    }
+
+    pub async fn up_vote(&self) -> Response {
+        self.ctx.inner.send_request(Method::POST, &format!("/posts/{}/votes.json?score=1&no_unvote=true", self.data.id)).await
+    }
+
+    pub async fn down_vote(&self) -> Response {
+        self.ctx.inner.send_request(Method::POST, &format!("/posts/{}/votes.json?score=-1&no_unvote=true", self.data.id)).await
+    }
+}
+
 #[derive(Debug, Deserialize, Default)]
+pub struct RawPosts {
+    posts: Vec<PostData>
+}
+
+#[derive(Clone, Default)]
 pub struct Posts {
     posts: Vec<Post>
 }
 
-impl From<Vec<Post>> for Posts {
-    fn from(value: Vec<Post>) -> Self {
-        Posts { posts: value }
-    }
-}
-
-impl IntoIterator for Posts {
-    type Item = Post;
+impl IntoIterator for RawPosts {
+    type Item = PostData;
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.posts.into_iter()
     }
 }
-
-pub struct E6 {
-    client: reqwest::Client,
-    auth: String,
-    user_agent: String
-}
-
-impl E6 {
-    pub fn new(key: &str, app_name: &str, app_version: &str, username: &str) -> Self {
-        E6 {
-            auth: engine::general_purpose::STANDARD.encode(format!("{username}:{key}")),
-            client: reqwest::Client::new(),
-            user_agent: format!("{app_name}/{app_version} (by {username})")
-        }
-        
-    }
-
-    pub async fn fetch_posts(&self, tags: &Vec<String>, index: Paginate) -> Vec<Post> {
-        self.client
-            .get(format!("https://e621.net/posts.json?tags={}&limit=320&page={}", tags.join("+"), index.to_param()))
-            .header(USER_AGENT, &self.user_agent)
-            .header(AUTHORIZATION, &self.auth)
-            .send()
-            .await.unwrap()
-            .json::<Posts>()
-            .await.unwrap()
-            .posts
-    }
-
-    pub async fn search(&self, tags: Vec<String>) -> Posts {
-        let mut posts = self.fetch_posts(&tags, 1.into()).await;
-
-        let mut post_list = posts.clone();
-        
-        let Some(previous_last_post) = posts.last() else {
-            eprintln!("No post found for the tags: \"{}\"", tags.join(" "));
-            return Posts::default();
-        };
-
-        let mut previous_last_id = previous_last_post.id;
-
-        // let main_progress_bar = ProgressBar::no_length().with_style(ProgressStyle::default_bar().template("[Processing Pages] {spinner:.green} [{elapsed_precise}] [{bar:40.green/cyan}] {pos:>7}").unwrap().progress_chars("#>-"));
-        // let multi_progress_handler = MultiProgress::new();
-        
-        // let main_progress_bar = multi_progress_handler.add(main_progress_bar);
-        
-        loop {
-            posts = self.fetch_posts(&tags, Paginate::ID(previous_last_id)).await;
-
-            if posts.len() == 0 || posts[posts.len() - 1].id == previous_last_id {
-                #[cfg(debug_assertions)]
-                println!("Reached last page, wrapping up... Current: {}, Previous: {previous_last_id}", match posts.get(0) { Some(post) => post.id.to_string(), None => "No Current Post".into() });
-                break;
-            } else {
-                previous_last_id = posts[posts.len() - 1].id.to_owned();
-            }
-
-            // main_progress_bar.inc(1);
-            post_list.extend(posts);
-        }
-
-        // main_progress_bar.finish();
-
-        Posts {
-            posts: post_list
-        }
-    }
-}
-
 pub enum Paginate {
     Page(u64),
     ID(u64)
@@ -282,5 +238,94 @@ impl Paginate {
 impl From<u64> for Paginate {
     fn from(value: u64) -> Self {
         Paginate::Page(value)
+    }
+}
+
+#[derive(Clone, Default)]
+struct E6Inner {
+    client: reqwest::Client,
+    auth: String,
+    user_agent: String
+}
+
+impl E6Inner {
+    async fn send_request(&self, method: Method, endpoint: &str) -> Response {
+        self.client.request(method, format!("https://e621.net{endpoint}"))
+            .header(USER_AGENT, &self.user_agent)
+            .header(AUTHORIZATION, &self.auth)
+            .send()
+            .await.unwrap()
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct E6 {
+    inner: Arc<E6Inner>
+}
+
+impl E6 {
+    pub fn new(key: &str, app_name: &str, app_version: &str, username: &str) -> Self {
+        E6 {
+            inner: Arc::new(
+                E6Inner {
+                    auth: engine::general_purpose::STANDARD.encode(format!("{username}:{key}")),
+                    client: reqwest::Client::new(),
+                    user_agent: format!("{app_name}/{app_version} (by {username})")
+                }
+            )
+        }
+        
+    }
+
+    pub async fn fetch_posts(&self, tags: &Vec<String>, index: Paginate) -> Posts {
+        Posts {
+            posts: self
+                .inner
+                .send_request(Method::GET, &format!("/posts.json?tags={}&limit=320&page={}", tags.join("+"), index.to_param()))
+                .await
+                .json::<RawPosts>()
+                .await.unwrap()
+                .into_iter().map(|post| Post { ctx: self.clone(), data: post })
+                .collect()
+        }
+    }
+
+    pub async fn search(&self, tags: Vec<String>) -> Posts {
+        let mut posts = self.fetch_posts(&tags, 1.into()).await.posts;
+
+        let mut post_list = posts.clone();
+        
+        let Some(previous_last_post) = posts.last() else {
+            eprintln!("No post found for the tags: \"{}\"", tags.join(" "));
+            return Posts::default();
+        };
+
+        let mut previous_last_id = previous_last_post.data.id;
+
+        // let main_progress_bar = ProgressBar::no_length().with_style(ProgressStyle::default_bar().template("[Processing Pages] {spinner:.green} [{elapsed_precise}] [{bar:40.green/cyan}] {pos:>7}").unwrap().progress_chars("#>-"));
+        // let multi_progress_handler = MultiProgress::new();
+        
+        // let main_progress_bar = multi_progress_handler.add(main_progress_bar);
+        
+        loop {
+            posts = self.fetch_posts(&tags, Paginate::ID(previous_last_id)).await.posts;
+
+            if posts.len() == 0 || posts[posts.len() - 1].data.id == previous_last_id {
+                #[cfg(debug_assertions)]
+                println!("Reached last page, wrapping up... Current: {}, Previous: {previous_last_id}", match posts.get(0) { Some(post) => post.data.id.to_string(), None => "No Current Post".into() });
+                break;
+            } else {
+                previous_last_id = posts[posts.len() - 1].data.id.to_owned();
+            }
+
+            // main_progress_bar.inc(1);
+            post_list.extend(posts);
+        }
+
+        // main_progress_bar.finish();
+
+        Posts {
+            posts: post_list
+        }
     }
 }
