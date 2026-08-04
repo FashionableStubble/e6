@@ -205,12 +205,12 @@ impl Post {
 
 #[derive(Debug, Deserialize, Default)]
 pub struct RawPosts {
-    posts: Vec<PostData>
+    pub posts: Vec<PostData>
 }
 
 #[derive(Clone, Default)]
 pub struct Posts {
-    posts: Vec<Post>
+    pub posts: Vec<Post>
 }
 
 impl IntoIterator for RawPosts {
@@ -221,6 +221,17 @@ impl IntoIterator for RawPosts {
         self.posts.into_iter()
     }
 }
+
+impl IntoIterator for Posts {
+    type Item = Post;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.posts.into_iter()
+    }
+}
+
+/// Tells e6 where to begin querying from.
 pub enum Paginate {
     Page(u64),
     ID(u64)
