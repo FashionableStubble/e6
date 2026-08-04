@@ -288,11 +288,14 @@ impl E6 {
         
     }
 
-    pub async fn fetch_posts(&self, tags: &Vec<String>, index: Paginate) -> Posts {
+    pub async fn fetch_posts(&self, tags: &Vec<String>, index: Paginate, limit: u16) -> Posts {
+        if limit > 320 {
+            panic!("Post limit must not be greater than 320.")
+        }
         Posts {
             posts: self
                 .inner
-                .send_request(Method::GET, &format!("/posts.json?tags={}&limit=320&page={}", tags.join("+"), index.to_param()))
+                .send_request(Method::GET, &format!("/posts.json?tags={}&limit={limit}&page={}", tags.join("+"), index.to_param()))
                 .await
                 .json::<RawPosts>()
                 .await.unwrap()
@@ -302,7 +305,7 @@ impl E6 {
     }
 
     pub async fn search(&self, tags: Vec<String>) -> Posts {
-        let mut posts = self.fetch_posts(&tags, 1.into()).await.posts;
+        let mut posts = self.fetch_posts(&tags, 1.into(), 320).await.posts;
 
         let mut post_list = posts.clone();
         
@@ -319,7 +322,7 @@ impl E6 {
         // let main_progress_bar = multi_progress_handler.add(main_progress_bar);
         
         loop {
-            posts = self.fetch_posts(&tags, Paginate::ID(previous_last_id)).await.posts;
+            posts = self.fetch_posts(&tags, Paginate::ID(previous_last_id), 320).await.posts;
 
             if posts.len() == 0 || posts[posts.len() - 1].data.id == previous_last_id {
                 #[cfg(debug_assertions)]
