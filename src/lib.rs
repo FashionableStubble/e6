@@ -1,9 +1,11 @@
-use std::sync::Arc;
+use std::{fmt::Display, sync::Arc};
 
 use reqwest::{Method, Response, header::{AUTHORIZATION, USER_AGENT}};
 // use indicatif::{ MultiProgress, ProgressBar, ProgressStyle };
 use base64::{engine, prelude::*};
 use serde::{Serialize, Deserialize};
+
+use crate::Direction::Before;
 
 #[derive(Debug, serde::Deserialize, Default, Clone)]
 pub enum Rating {
@@ -231,18 +233,36 @@ impl IntoIterator for Posts {
     }
 }
 
+pub enum Direction {
+    Before,
+    After,
+}
+
+impl Display for Direction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}",
+            match self {
+                Direction::Before => "b",
+                Direction::After => "a",
+            }
+        )
+    }
+}
+
 /// Tells e6 where to begin querying from.
 pub enum Paginate {
     Page(u64),
-    ID(u64)
+    ID((Direction, u64))
 }
 
-impl Paginate {
-    fn to_param(&self) -> String {
-        match self {
-            Paginate::Page(p) => p.to_string(),
-            Paginate::ID(id) => format!("b{id}")
-        }
+impl Display for Paginate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}",
+            match self {
+                Paginate::Page(p) => p.to_string(),
+                Paginate::ID((direction, id)) => format!("{direction}{id}")
+            }
+        )
     }
 }
 
@@ -292,10 +312,11 @@ impl E6 {
         if limit > 320 {
             panic!("Post limit must not be greater than 320.")
         }
+
         Posts {
             posts: self
                 .inner
-                .send_request(Method::GET, &format!("/posts.json?tags={}&limit={limit}&page={}", tags.join("+"), index.to_param()))
+                .send_request(Method::GET, &format!("/posts.json?tags={}&limit={limit}&page={index}", tags.join("+")))
                 .await
                 .json::<RawPosts>()
                 .await.unwrap()
@@ -322,7 +343,7 @@ impl E6 {
         // let main_progress_bar = multi_progress_handler.add(main_progress_bar);
         
         loop {
-            posts = self.fetch_posts(&tags, Paginate::ID(previous_last_id), 320).await.posts;
+            posts = self.fetch_posts(&tags, Paginate::ID((Before, previous_last_id)), 320).await.posts;
 
             if posts.len() == 0 || posts[posts.len() - 1].data.id == previous_last_id {
                 #[cfg(debug_assertions)]
