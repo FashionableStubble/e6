@@ -7,6 +7,8 @@ use serde::{Serialize, Deserialize};
 
 use crate::Direction::Before;
 
+pub const QUERY_MAX: u16 = 320;
+
 #[derive(Debug, serde::Deserialize, Default, Clone)]
 pub enum Rating {
     s,
@@ -309,8 +311,8 @@ impl E6 {
     }
 
     pub async fn fetch_posts(&self, tags: &Vec<String>, index: Paginate, limit: u16) -> Posts {
-        if limit > 320 {
-            panic!("Post limit must not be greater than 320.")
+        if limit > QUERY_MAX {
+            panic!("Post limit must not be greater than {QUERY_MAX}.")
         }
 
         Posts {
@@ -326,7 +328,7 @@ impl E6 {
     }
 
     pub async fn search(&self, tags: Vec<String>) -> Posts {
-        let mut posts = self.fetch_posts(&tags, 1.into(), 320).await.posts;
+        let mut posts = self.fetch_posts(&tags, 1.into(), QUERY_MAX).await.posts;
 
         let mut post_list = posts.clone();
         
@@ -343,7 +345,7 @@ impl E6 {
         // let main_progress_bar = multi_progress_handler.add(main_progress_bar);
         
         loop {
-            posts = self.fetch_posts(&tags, Paginate::ID((Before, previous_last_id)), 320).await.posts;
+            posts = self.fetch_posts(&tags, Paginate::ID((Before, previous_last_id)), QUERY_MAX).await.posts;
 
             if posts.len() == 0 || posts[posts.len() - 1].data.id == previous_last_id {
                 #[cfg(debug_assertions)]
